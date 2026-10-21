@@ -1,16 +1,17 @@
-# React + Vite
+# Resume Builder frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Run locally
 
-Currently, two official plugins are available:
+From `Frontend/`, install dependencies with `npm install`, then start the app with
+`npm run dev`. The Vite development server proxies `/api` requests to
+`http://127.0.0.1:8000` by default.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Set `VITE_API_URL` to the backend base URL when it is hosted elsewhere. The same
+base URL is used for authentication, resume requests, and AI summary generation.
 
-## React Compiler
+## AI summary integration
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+The Generate with AI action sends an authenticated `POST /ai/generate-summary`
+request with the user's name, experience entries, and current summary. The
+backend should return JSON containing a non-empty `summary` string. Keep any AI
+provider credentials on the backend; this frontend only calls the backend API.
