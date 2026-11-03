@@ -50,3 +50,74 @@ export function loginUser({ email, password }) {
 export function getResumes(token) {
   return request('/resumes', { headers: { Authorization: `Bearer ${token}` } })
 }
+
+export function getResume(resumeId, token) {
+  return apiFetch(`/resumes/${resumeId}`, {}, token)
+}
+
+export function deleteResume(resumeId, token) {
+  return apiFetch(`/resumes/${resumeId}`, { method: 'DELETE' }, token)
+}
+
+export function duplicateResume(resumeId, overrides = {}, token) {
+  return apiFetch(`/resumes/${resumeId}/duplicate`, {
+    method: 'POST',
+    body: JSON.stringify(overrides),
+  }, token)
+}
+
+export function exportResumeJson(resumeId, token) {
+  return apiFetch(`/resumes/${resumeId}/export/json`, {}, token)
+}
+
+export function reorderResumeSection(resumeId, section, ids, token) {
+  return apiFetch(`/resumes/${resumeId}/reorder`, {
+    method: 'PATCH',
+    body: JSON.stringify({ section, ids }),
+  }, token)
+}
+
+export function createResumeSection(resumeId, section, payload, token) {
+  return apiFetch(`/resumes/${resumeId}/${section}`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token)
+}
+
+export function listResumeSection(resumeId, section, token) {
+  return apiFetch(`/resumes/${resumeId}/${section}`, {}, token)
+}
+
+export function updateResumeSection(resumeId, section, itemId, payload, token) {
+  return apiFetch(`/resumes/${resumeId}/${section}/${itemId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, token)
+}
+
+export function deleteResumeSection(resumeId, section, itemId, token) {
+  return apiFetch(`/resumes/${resumeId}/${section}/${itemId}`, {
+    method: 'DELETE',
+  }, token)
+}
+
+export function rewriteBullet(payload, token) {
+  return apiFetch('/ai/rewrite-bullet-xyz', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token)
+}
+
+export function tailorResume(payload, token) {
+  return apiFetch('/ai/tailor-resume', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token)
+}
+
+export function suggestSkills(payload, token) {
+  return apiFetch('/ai/suggest-skills', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token)
+}

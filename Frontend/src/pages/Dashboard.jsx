@@ -1,25 +1,64 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  ArrowRight,
+  CheckCircle2,
+  ChevronDown,
+  Copy,
+  Download,
+  FileText,
+  LayoutTemplate,
+  Loader2,
+  LogOut,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  WandSparkles,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../Context/AuthContext';
-import { apiFetch, getResumes } from '../api';
+import { apiFetch, duplicateResume, exportResumeJson, getResumes, tailorResume } from '../api';
 import ResumeForm from '../components/ResumeForm';
+import ResumePreview from '../components/ResumePreview';
+import Logo from '../components/Logo';
+import { TemplateGrid } from '../components/TemplatePicker';
+import { getResumePreferences } from '../lib/prefs';
+import { computeAtsScore } from '../lib/ats';
+import { getTemplate } from '../data/templates';
 
 export default function Dashboard() {
   const { token, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingResume, setEditingResume] = useState(null);
   const [deletingResumeIds, setDeletingResumeIds] = useState(() => new Set());
+  const [busyResumeIds, setBusyResumeIds] = useState(() => new Set());
+  const [tailorOpen, setTailorOpen] = useState(null);
+  const [jobDescription, setJobDescription] = useState('');
+  const [tailorResult, setTailorResult] = useState(null);
+  const [tailorLoading, setTailorLoading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const menuRef = useRef(null);
 
-  // Fetch resumes when component mounts
   useEffect(() => {
     const fetchResumes = async () => {
       try {
         const data = await getResumes(token);
-        setResumes(data);
+        setResumes(data || []);
+        setLoadError('');
       } catch (err) {
         console.error(err);
-        alert(err.message);
+        setLoadError(
+          err.message || 'We could not reach the server. Your resumes will load once the connection is back.',
+        );
       } finally {
         setLoading(false);
       }
@@ -28,141 +67,621 @@ export default function Dashboard() {
     fetchResumes();
   }, [token]);
 
-  // Callback when a resume is successfully created or updated
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const handleClick = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [menuOpen]);
+
+  const stats = useMemo(() => {
+    const scores = resumes.map((resume) => computeAtsScore(resume).score);
+    const average = scores.length
+      ? Math.round(scores.reduce((total, score) => total + score, 0) / scores.length)
+      : 0;
+    return [
+      { label: 'Resumes', value: resumes.length, icon: FileText, tint: 'text-amber-600 bg-amber-50' },
+      { label: 'Average ATS score', value: average, icon: ShieldCheck, tint: 'text-emerald-600 bg-emerald-50' },
+      { label: 'Templates ready', value: 120, icon: LayoutTemplate, tint: 'text-indigo-600 bg-indigo-50' },
+      { label: 'Interviews', value: 0, icon: Sparkles, tint: 'text-pink-600 bg-pink-50' },
+    ];
+  }, [resumes]);
+
+  const openBuilder = (templateId = null) => {
+    setSelectedTemplateId(templateId);
+    setEditingResume(null);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // A template picked on the homepage lands here through router state
+  const [routerState, setRouterState] = useState(location.state);
+  if (location.state !== routerState) {
+    setRouterState(location.state);
+    if (location.state?.templateId) {
+      setSelectedTemplateId(location.state.templateId);
+      setEditingResume(null);
+      setShowForm(true);
+    }
+  }
+
+  useEffect(() => {
+    if (!location.state?.templateId) return;
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, location.pathname, navigate]);
+
+  const openEditor = (resume) => {
+    setEditingResume(resume);
+    setSelectedTemplateId(null);
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleResumeCreated = (savedResume) => {
-    setResumes((current) => editingResume
-      ? current.map((resume) => resume.id === savedResume.id ? savedResume : resume)
-      : [savedResume, ...current]);
+    setResumes((current) =>
+      editingResume
+        ? current.map((resume) => (resume.id === savedResume.id ? savedResume : resume))
+        : [savedResume, ...current],
+    );
     setEditingResume(null);
     setShowForm(false);
   };
 
-    // Delete a resume
   const handleDelete = async (resumeId) => {
-      if (deletingResumeIds.has(resumeId)) return;
-    if (!window.confirm("Are you sure you want to delete this resume?")) return;
+    if (deletingResumeIds.has(resumeId)) return;
+    if (!window.confirm('Are you sure you want to delete this resume?')) return;
 
-      setDeletingResumeIds((current) => new Set(current).add(resumeId));
-      try {
-        await apiFetch(`/resumes/${resumeId}`, {
-          method: 'DELETE',
-      }, token);
-        setResumes((current) => current.filter((r) => r.id !== resumeId));
-      } catch (err) {
-        alert(err.message);
-      } finally {
-        setDeletingResumeIds((current) => {
-          const updated = new Set(current);
-          updated.delete(resumeId);
-          return updated;
-        });
-      }
-    };
-  
+    setDeletingResumeIds((current) => new Set(current).add(resumeId));
+    try {
+      await apiFetch(`/resumes/${resumeId}`, { method: 'DELETE' }, token);
+      setResumes((current) => current.filter((resume) => resume.id !== resumeId));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setDeletingResumeIds((current) => {
+        const updated = new Set(current);
+        updated.delete(resumeId);
+        return updated;
+      });
+    }
+  };
+
+  const markBusy = (resumeId, busy) =>
+    setBusyResumeIds((current) => {
+      const next = new Set(current);
+      if (busy) next.add(resumeId);
+      else next.delete(resumeId);
+      return next;
+    });
+
+  const handleDuplicate = async (resume) => {
+    markBusy(resume.id, true);
+    try {
+      const copy = await duplicateResume(resume.id, {}, token);
+      setResumes((current) => [copy, ...current]);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      markBusy(resume.id, false);
+    }
+  };
+
+  const handleExport = async (resume) => {
+    markBusy(resume.id, true);
+    try {
+      const data = await exportResumeJson(resume.id, token);
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${(resume.full_name || 'resume').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      markBusy(resume.id, false);
+    }
+  };
+
+  const handleTailor = async () => {
+    if (jobDescription.trim().length < 20) {
+      alert('Please enter at least 20 characters of job description.');
+      return;
+    }
+    setTailorLoading(true);
+    try {
+      setTailorResult(await tailorResume({ resume_id: tailorOpen.id, job_description: jobDescription }, token));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setTailorLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/homepage');
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100 p-10">
-      {/* Header */}
-      <div className="max-w-4xl mx-auto flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">My Resumes</h1>
-        <button 
-          onClick={logout} 
-          className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
-        >
-          Logout
-        </button>
-      </div>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-3.5 lg:px-10">
+          <div className="flex items-center gap-8">
+            <Logo to="/homepage" />
+            <nav className="hidden items-center gap-6 text-sm font-semibold text-slate-500 md:flex">
+              <span className="text-slate-900">Dashboard</span>
+              <a href="#templates" className="transition hover:text-slate-900">
+                Templates
+              </a>
+              <a href="#resumes" className="transition hover:text-slate-900">
+                My resumes
+              </a>
+            </nav>
+          </div>
 
-      {/* Main Content Area */}
-      <div className="max-w-4xl mx-auto">
-        
-        {/* Toggle Form Button */}
-        {!showForm && (
-          <button 
-            onClick={() => { setEditingResume(null); setShowForm(true); }} 
-            className="bg-blue-600 text-white px-4 py-2 rounded mb-6 hover:bg-blue-700"
-          >
-            + Create New Resume
-          </button>
-        )}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => openBuilder()}
+              className="whitespace-nowrap rounded-full bg-amber-400 px-3 py-2.5 text-sm font-bold text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-300 sm:px-5"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Plus size={16} />
+                <span className="hidden sm:inline">New resume</span>
+                <span className="sm:hidden">New</span>
+              </span>
+            </button>
 
-        {/* The Form */}
-        {showForm && (
-          <ResumeForm 
-            onResumeCreated={handleResumeCreated} 
-            onCancel={() => {
-              setEditingResume(null);
-              setShowForm(false);
-            }}
-            initialData={editingResume}
-          />
-        )}
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setMenuOpen((open) => !open)}
+                aria-expanded={menuOpen}
+                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 transition hover:border-slate-300"
+              >
+                <span className="grid h-8 w-8 place-items-center rounded-full bg-amber-100 text-sm font-extrabold text-amber-700">
+                  {(resumes[0]?.full_name || 'R').trim().charAt(0).toUpperCase()}
+                </span>
+                <ChevronDown size={15} className="text-slate-400" />
+              </button>
 
-        {/* Resume List */}
-        {loading ? (
-          <p>Loading...</p>
-        ) : resumes.length === 0 ? (
-          <div className="bg-white p-6 rounded shadow text-center">
-            <p className="text-gray-500">You haven't created any resumes yet.</p>
+              {menuOpen && (
+                <div className="absolute right-0 top-12 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                  <div className="border-b border-slate-100 px-4 py-3">
+                    <p className="truncate text-sm font-bold text-slate-900">
+                      {resumes[0]?.full_name || 'Your workspace'}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">{resumes[0]?.email || 'Signed in'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      navigate('/homepage');
+                    }}
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <ArrowRight size={15} /> Back to website
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                  >
+                    <LogOut size={15} /> Log out
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-6 pb-20 pt-10 lg:px-10">
+        {showForm ? (
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm(false);
+                setEditingResume(null);
+              }}
+              className="mb-6 inline-flex items-center gap-2 text-sm font-bold text-slate-500 transition hover:text-slate-900"
+            >
+              ← Back to dashboard
+            </button>
+            <ResumeForm
+              onResumeCreated={handleResumeCreated}
+              onCancel={() => {
+                setEditingResume(null);
+                setShowForm(false);
+              }}
+              initialData={editingResume}
+              initialTemplateId={selectedTemplateId}
+            />
           </div>
         ) : (
-          <div className="grid gap-4">
-            {resumes.map((resume) => (
-              <div key={resume.id} className="bg-white p-6 rounded shadow flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl font-bold">{resume.full_name}</h2>
-                  <p className="text-gray-500">{resume.email}</p>
-                  <p className="text-sm text-gray-400 mt-2">
-                    {resume.experiences.length} experience(s)
+          <>
+            {/* Hero */}
+            <section className="relative overflow-hidden rounded-3xl bg-slate-900 px-6 py-10 text-white shadow-xl sm:px-10 sm:py-12">
+              <div className="pointer-events-none absolute inset-0 homepage-honeycomb opacity-[0.12]" />
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-amber-400/25 blur-3xl"
+              />
+              <div className="relative z-[1] flex flex-wrap items-end justify-between gap-8">
+                <div className="max-w-xl">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-300/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-300">
+                    <Sparkles size={13} /> Your workspace
+                  </span>
+                  <h1 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl">
+                    Welcome back 👋
+                  </h1>
+                  <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
+                    Pick a template, write your story and watch the preview update live. Your
+                    resume is always ATS-ready.
                   </p>
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openBuilder()}
+                      className="inline-flex items-center gap-2 rounded-full bg-amber-400 px-6 py-3 text-sm font-extrabold text-slate-900 shadow-lg shadow-amber-500/20 transition hover:-translate-y-0.5 hover:bg-amber-300"
+                    >
+                      <Plus size={16} /> Create a resume
+                    </button>
+                    <a
+                      href="#templates"
+                      className="rounded-full border border-white/20 px-6 py-3 text-sm font-bold text-white transition hover:bg-white/10"
+                    >
+                      Browse templates
+                    </a>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setEditingResume(resume);
-                      setShowForm(true);
-                    }}
-                    className="text-blue-600 hover:text-blue-800 font-semibold text-sm px-3 py-1 rounded border border-blue-200 hover:bg-blue-50"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(resume.id)}
-                    disabled={deletingResumeIds.has(resume.id)}
-                    aria-busy={deletingResumeIds.has(resume.id)}
-                    className="text-red-500 hover:text-red-700 font-semibold text-sm px-3 py-1 rounded border border-red-200 hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    {deletingResumeIds.has(resume.id) ? (
-                      <span className="flex items-center gap-2" aria-live="polite">
-                        <svg
-                          className="h-4 w-4 animate-spin"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          aria-hidden="true"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                          />
-                        </svg>
-                        Deleting...
+
+                <div className="grid w-full grid-cols-2 gap-3 sm:w-auto sm:grid-cols-4 lg:gap-4">
+                  {stats.map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur"
+                    >
+                      <span className={`grid h-9 w-9 place-items-center rounded-xl ${stat.tint}`}>
+                        <stat.icon size={17} />
                       </span>
-                    ) : 'Delete'}
-                  </button>
+                      <p className="mt-3 text-2xl font-extrabold tabular-nums">{stat.value}</p>
+                      <p className="mt-0.5 text-[11px] font-medium text-slate-400">{stat.label}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
+            </section>
+
+            {/* Templates */}
+            <section id="templates" className="mt-14 scroll-mt-24">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">
+                    Templates
+                  </span>
+                  <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+                    Start from a template
+                  </h2>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+                    Every layout is ATS-safe, prints on a single page and can be restyled with the
+                    font picker inside the builder.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openBuilder()}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-800 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  Start from scratch
+                  <ArrowRight size={15} />
+                </button>
+              </div>
+
+              <div className="mt-8">
+                <TemplateGrid
+                  selectedId={null}
+                  onSelect={(template) => openBuilder(template.id)}
+                  columns="sm:grid-cols-2 lg:grid-cols-3"
+                />
+              </div>
+            </section>
+
+            {/* Resumes */}
+            <section id="resumes" className="mt-16 scroll-mt-24">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">
+                    My resumes
+                  </span>
+                  <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+                    Your documents
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openBuilder()}
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700"
+                >
+                  <Plus size={15} /> New resume
+                </button>
+              </div>
+
+              <div className="mt-8">
+                {loadError && (
+                  <p className="mb-5 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                    <ShieldCheck size={17} className="mt-0.5 shrink-0" />
+                    {loadError}
+                  </p>
+                )}
+                {loading ? (
+                  <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
+                    <Loader2 size={18} className="animate-spin text-amber-500" />
+                    Loading your resumes…
+                  </div>
+                ) : resumes.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center">
+                    <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-500">
+                      <FileText size={26} />
+                    </span>
+                    <h3 className="mt-5 text-lg font-extrabold text-slate-900">
+                      You haven't created any resumes yet
+                    </h3>
+                    <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
+                      Choose a template above and your live preview will build itself as you type.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => openBuilder()}
+                      className="mt-6 inline-flex items-center gap-2 rounded-full bg-amber-400 px-6 py-3 text-sm font-extrabold text-slate-900 transition hover:-translate-y-0.5 hover:bg-amber-300"
+                    >
+                      <Plus size={16} /> Create your first resume
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid gap-5 lg:grid-cols-2">
+                    {resumes.map((resume) => (
+                      <ResumeCard
+                        key={resume.id}
+                        resume={resume}
+                        busy={busyResumeIds.has(resume.id)}
+                        deleting={deletingResumeIds.has(resume.id)}
+                        onEdit={() => openEditor(resume)}
+                        onDuplicate={() => handleDuplicate(resume)}
+                        onExport={() => handleExport(resume)}
+                        onTailor={() => {
+                          setTailorOpen(resume);
+                          setTailorResult(null);
+                        }}
+                        onDelete={() => handleDelete(resume.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
         )}
-      </div>
+      </main>
+
+      {tailorOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setTailorOpen(null)}
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+          />
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-5">
+              <div>
+                <h2 className="text-lg font-extrabold text-slate-900">
+                  Tailor “{tailorOpen.full_name}”
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Paste a job description and we will score the match.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTailorOpen(null)}
+                className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-6 py-5">
+              <textarea
+                value={jobDescription}
+                onChange={(e) => setJobDescription(e.target.value)}
+                rows={6}
+                placeholder="Paste the job description here…"
+                className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm leading-relaxed shadow-sm outline-none transition focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
+              />
+
+              {tailorResult && (
+                <div className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                  <div className="flex items-center gap-4">
+                    <span className="grid h-16 w-16 place-items-center rounded-full bg-emerald-500/10 text-xl font-extrabold text-emerald-600">
+                      {tailorResult.match_score}%
+                    </span>
+                    <div>
+                      <p className="text-sm font-extrabold text-slate-900">Match score</p>
+                      <p className="text-xs text-slate-500">How well this resume fits the role.</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-600">
+                        Matched skills
+                      </p>
+                      <p className="mt-1 text-sm text-slate-700">
+                        {tailorResult.matched_skills.join(', ') || 'None yet'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-amber-600">
+                        Missing skills
+                      </p>
+                      <p className="mt-1 text-sm text-slate-700">
+                        {tailorResult.missing_skills.join(', ') || 'None — nice work'}
+                      </p>
+                    </div>
+                  </div>
+                  {tailorResult.recommendations?.length > 0 && (
+                    <div className="rounded-xl bg-white p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        Recommendations
+                      </p>
+                      <ul className="mt-1 space-y-1 text-sm text-slate-700">
+                        {tailorResult.recommendations.map((recommendation, index) => (
+                          <li key={index} className="flex gap-2">
+                            <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-amber-500" />
+                            {recommendation}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setTailorOpen(null)}
+                className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleTailor}
+                disabled={tailorLoading}
+                className="inline-flex items-center gap-2 rounded-full bg-amber-400 px-6 py-2.5 text-sm font-extrabold text-slate-900 transition hover:bg-amber-300 disabled:opacity-60"
+              >
+                {tailorLoading ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <WandSparkles size={15} />
+                )}
+                {tailorLoading ? 'Analyzing…' : 'Analyze match'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ResumeCard({ resume, busy, deleting, onEdit, onDuplicate, onExport, onTailor, onDelete }) {
+  const prefs = getResumePreferences(resume.id);
+  const template = getTemplate(prefs.templateId);
+  const { score, rating } = computeAtsScore(resume);
+  const experiences = resume.experiences?.length || 0;
+  const skills = resume.skills?.length || 0;
+
+  return (
+    <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+      <div className="flex gap-5 p-5">
+        <div className="hidden shrink-0 overflow-hidden rounded-xl border border-slate-200 sm:block">
+          <ResumePreview
+            data={resume}
+            templateId={prefs.templateId}
+            fontId={prefs.fontId}
+            scale={0.19}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="truncate text-lg font-extrabold text-slate-900">
+                {resume.full_name || 'Untitled resume'}
+              </h3>
+              <p className="truncate text-sm text-slate-500">{resume.email}</p>
+            </div>
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                score >= 75
+                  ? 'bg-emerald-50 text-emerald-600'
+                  : score >= 60
+                    ? 'bg-amber-50 text-amber-700'
+                    : 'bg-red-50 text-red-600'
+              }`}
+            >
+              ATS {score} · {rating}
+            </span>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+              {template.name}
+            </span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+              {prefs.fontId}
+            </span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+              {experiences} role{experiences === 1 ? '' : 's'}
+            </span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+              {skills} skill{skills === 1 ? '' : 's'}
+            </span>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-slate-700"
+            >
+              <Pencil size={13} /> Edit
+            </button>
+            <button
+              type="button"
+              onClick={onTailor}
+              className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-700 transition hover:bg-amber-100"
+            >
+              <WandSparkles size={13} /> Tailor
+            </button>
+            <button
+              type="button"
+              onClick={onDuplicate}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            >
+              <Copy size={13} /> Duplicate
+            </button>
+            <button
+              type="button"
+              onClick={onExport}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            >
+              <Download size={13} /> Export JSON
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleting}
+              className="inline-flex items-center gap-1.5 rounded-full border border-red-200 px-3.5 py-2 text-xs font-bold text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+            >
+              {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
