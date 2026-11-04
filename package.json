@@ -1,1 +1,7 @@
-{}
+{
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix Frontend ci && npm --prefix Frontend run build",
+    "deploy": "npm run build && npx wrangler pages deploy Frontend/dist --project-name resumbee-frontend"
+  }
+}
