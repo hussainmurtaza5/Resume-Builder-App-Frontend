@@ -1,30 +1,62 @@
 import { createContext, useState, useContext, useEffect } from 'react';
-import { loginUser } from '../api';
+import { getCurrentUser, loginUser } from '../api';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  // Try to load token from localStorage on first load
-  const [token, setToken] = useState(() => localStorage.getItem('token'));
+  const [auth, setAuth] = useState(() => ({
+    status: localStorage.getItem('token') ? 'checking' : 'unauthenticated',
+    token: null,
+  }));
+  const [checkAttempt, setCheckAttempt] = useState(0);
 
-  // When token changes, save it to localStorage so it survives a refresh
   useEffect(() => {
-    if (token) {
-      localStorage.setItem('token', token);
-    } else {
-      localStorage.removeItem('token');
-    }
-  }, [token]);
+    let active = true;
+    const storedToken = localStorage.getItem('token');
+
+    if (!storedToken) return undefined;
+    getCurrentUser(storedToken)
+      .then(() => {
+        if (active) setAuth({ status: 'authenticated', token: storedToken });
+      })
+      .catch((error) => {
+        if (!active) return;
+        if (error.status === 401 || error.status === 403) {
+          localStorage.removeItem('token');
+          setAuth({ status: 'unauthenticated', token: null });
+          return;
+        }
+        setAuth({ status: 'unavailable', token: null });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [checkAttempt]);
 
   const login = async (credentials) => {
     const data = await loginUser(credentials);
-    setToken(data.access_token);
+    localStorage.setItem('token', data.access_token);
+    setAuth({ status: 'authenticated', token: data.access_token });
     return data;
   };
-  const logout = () => setToken(null);
+  const logout = () => {
+    localStorage.removeItem('token');
+    setAuth({ status: 'unauthenticated', token: null });
+  };
+  const retryAuthCheck = () => {
+    if (!localStorage.getItem('token')) {
+      setAuth({ status: 'unauthenticated', token: null });
+      return;
+    }
+    setAuth({ status: 'checking', token: null });
+    setCheckAttempt((attempt) => attempt + 1);
+  };
 
   return (
-    <AuthContext.Provider value={{ token, login, logout }}>
+    <AuthContext.Provider
+      value={{ ...auth, retryAuthCheck, login, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

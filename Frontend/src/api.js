@@ -19,7 +19,9 @@ async function request(path, options = {}) {
     const detail = Array.isArray(data?.detail)
       ? data.detail.map((error) => error.msg).join(', ')
       : data?.detail
-    throw new Error(detail || `Request failed (${response.status})`)
+    const error = new Error(detail || `Request failed (${response.status})`)
+    error.status = response.status
+    throw error
   }
 
   return data
@@ -45,6 +47,10 @@ export function loginUser({ email, password }) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: formData,
   })
+}
+
+export function getCurrentUser(token) {
+  return apiFetch('/users/me', {}, token)
 }
 
 export function getResumes(token) {
@@ -113,6 +119,37 @@ export function tailorResume(payload, token) {
     method: 'POST',
     body: JSON.stringify(payload),
   }, token)
+}
+
+export function createApplication(payload, token) {
+  return apiFetch('/applications', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token)
+}
+
+export function getApplications(token, status = '') {
+  const query = status ? `?status=${encodeURIComponent(status)}` : ''
+  return apiFetch(`/applications${query}`, {}, token)
+}
+
+export function getApplication(applicationId, token) {
+  return apiFetch(`/applications/${applicationId}`, {}, token)
+}
+
+export function updateApplication(applicationId, payload, token) {
+  return apiFetch(`/applications/${applicationId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, token)
+}
+
+export function deleteApplication(applicationId, token) {
+  return apiFetch(`/applications/${applicationId}`, { method: 'DELETE' }, token)
+}
+
+export function analyzeApplication(applicationId, token) {
+  return apiFetch(`/applications/${applicationId}/analyze`, { method: 'POST' }, token)
 }
 
 export function suggestSkills(payload, token) {

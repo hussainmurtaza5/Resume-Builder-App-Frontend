@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  BriefcaseBusiness,
   CheckCircle2,
   ChevronDown,
   Copy,
   Download,
+  ExternalLink,
   FileText,
   LayoutTemplate,
   Loader2,
@@ -19,7 +21,19 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../Context/AuthContext';
-import { apiFetch, duplicateResume, exportResumeJson, getResumes, tailorResume } from '../api';
+import {
+  analyzeApplication,
+  apiFetch,
+  createApplication,
+  deleteApplication,
+  duplicateResume,
+  exportResumeJson,
+  getApplication,
+  getApplications,
+  getResumes,
+  tailorResume,
+  updateApplication,
+} from '../api';
 import ResumeForm from '../components/ResumeForm';
 import ResumePreview from '../components/ResumePreview';
 import Logo from '../components/Logo';
@@ -44,6 +58,14 @@ export default function Dashboard() {
   const [jobDescription, setJobDescription] = useState('');
   const [tailorResult, setTailorResult] = useState(null);
   const [tailorLoading, setTailorLoading] = useState(false);
+  const [applications, setApplications] = useState([]);
+  const [applicationsLoading, setApplicationsLoading] = useState(true);
+  const [applicationError, setApplicationError] = useState('');
+  const [applicationFilter, setApplicationFilter] = useState('all');
+  const [applicationOpen, setApplicationOpen] = useState(null);
+  const [applicationLoading, setApplicationLoading] = useState(false);
+  const [applicationSaving, setApplicationSaving] = useState(false);
+  const [applicationForm, setApplicationForm] = useState({ company: '', role: '', job_url: '', notes: '' });
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const menuRef = useRef(null);
@@ -68,6 +90,23 @@ export default function Dashboard() {
   }, [token]);
 
   useEffect(() => {
+    let active = true;
+    getApplications(token)
+      .then((data) => {
+        if (!active) return;
+        setApplications(data || []);
+        setApplicationError('');
+      })
+      .catch((err) => {
+        if (active) setApplicationError(err.message || 'Applications could not be loaded.');
+      })
+      .finally(() => {
+        if (active) setApplicationsLoading(false);
+      });
+    return () => { active = false; };
+  }, [token]);
+
+  useEffect(() => {
     if (!menuOpen) return undefined;
     const handleClick = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) setMenuOpen(false);
@@ -81,13 +120,14 @@ export default function Dashboard() {
     const average = scores.length
       ? Math.round(scores.reduce((total, score) => total + score, 0) / scores.length)
       : 0;
+    const interviewCount = applications.filter((application) => application.status === 'interviewing').length;
     return [
       { label: 'Resumes', value: resumes.length, icon: FileText, tint: 'text-amber-600 bg-amber-50' },
       { label: 'Average ATS score', value: average, icon: ShieldCheck, tint: 'text-emerald-600 bg-emerald-50' },
       { label: 'Templates ready', value: 120, icon: LayoutTemplate, tint: 'text-indigo-600 bg-indigo-50' },
-      { label: 'Interviews', value: 0, icon: Sparkles, tint: 'text-pink-600 bg-pink-50' },
+      { label: 'Interviews', value: interviewCount, icon: Sparkles, tint: 'text-pink-600 bg-pink-50' },
     ];
-  }, [resumes]);
+  }, [resumes, applications]);
 
   const openBuilder = (templateId = null) => {
     setSelectedTemplateId(templateId);
@@ -202,6 +242,92 @@ export default function Dashboard() {
     }
   };
 
+  const openTailor = (resume) => {
+    setTailorOpen(resume);
+    setTailorResult(null);
+    setJobDescription('');
+    setApplicationForm({ company: '', role: '', job_url: '', notes: '' });
+  };
+
+  const handleSaveApplication = async () => {
+    if (!applicationForm.company.trim() || !applicationForm.role.trim()) {
+      alert('Add the company and role before saving this application.');
+      return;
+    }
+    if (jobDescription.trim().length < 20) {
+      alert('Please enter at least 20 characters of job description.');
+      return;
+    }
+    setApplicationSaving(true);
+    try {
+      const saved = await createApplication({
+        resume_id: tailorOpen.id,
+        company: applicationForm.company.trim(),
+        role: applicationForm.role.trim(),
+        job_url: applicationForm.job_url.trim() || null,
+        job_description: jobDescription.trim(),
+        notes: applicationForm.notes.trim(),
+      }, token);
+      setApplications((current) => [saved, ...current]);
+      setTailorOpen(null);
+      setApplicationOpen(saved);
+      document.getElementById('applications')?.scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setApplicationSaving(false);
+    }
+  };
+
+  const openApplication = async (application) => {
+    setApplicationLoading(true);
+    try {
+      setApplicationOpen(await getApplication(application.id, token));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setApplicationLoading(false);
+    }
+  };
+
+  const handleApplicationStatus = async (applicationId, status) => {
+    try {
+      const updated = await updateApplication(applicationId, { status }, token);
+      setApplications((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setApplicationOpen(updated);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleAnalyzeApplication = async (applicationId) => {
+    setApplicationLoading(true);
+    try {
+      const updated = await analyzeApplication(applicationId, token);
+      setApplications((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setApplicationOpen(updated);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setApplicationLoading(false);
+    }
+  };
+
+  const handleDeleteApplication = async (applicationId) => {
+    if (!window.confirm('Delete this application and its saved tailored resume?')) return;
+    try {
+      await deleteApplication(applicationId, token);
+      setApplications((current) => current.filter((item) => item.id !== applicationId));
+      setApplicationOpen(null);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const visibleApplications = applicationFilter === 'all'
+    ? applications
+    : applications.filter((application) => application.status === applicationFilter);
+
   const handleLogout = () => {
     logout();
     navigate('/homepage');
@@ -220,6 +346,9 @@ export default function Dashboard() {
               </a>
               <a href="#resumes" className="transition hover:text-slate-900">
                 My resumes
+              </a>
+              <a href="#applications" className="transition hover:text-slate-900">
+                Applications
               </a>
             </nav>
           </div>
@@ -456,11 +585,69 @@ export default function Dashboard() {
                         onEdit={() => openEditor(resume)}
                         onDuplicate={() => handleDuplicate(resume)}
                         onExport={() => handleExport(resume)}
-                        onTailor={() => {
-                          setTailorOpen(resume);
-                          setTailorResult(null);
-                        }}
+                        onTailor={() => openTailor(resume)}
                         onDelete={() => handleDelete(resume.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Applications */}
+            <section id="applications" className="mt-16 scroll-mt-24">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-700">
+                    <BriefcaseBusiness size={13} /> Job search
+                  </span>
+                  <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+                    Application tracker
+                  </h2>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+                    Keep every opportunity, status update and saved tailored resume together.
+                  </p>
+                </div>
+                <select
+                  value={applicationFilter}
+                  onChange={(event) => setApplicationFilter(event.target.value)}
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-amber-400"
+                >
+                  <option value="all">All applications</option>
+                  <option value="wishlist">Wishlist</option>
+                  <option value="applied">Applied</option>
+                  <option value="interviewing">Interviewing</option>
+                  <option value="offer">Offers</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="withdrawn">Withdrawn</option>
+                </select>
+              </div>
+
+              <div className="mt-8">
+                {applicationError && (
+                  <p className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                    {applicationError}
+                  </p>
+                )}
+                {applicationsLoading ? (
+                  <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
+                    <Loader2 size={18} className="animate-spin text-amber-500" /> Loading applications…
+                  </div>
+                ) : visibleApplications.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
+                    <BriefcaseBusiness className="mx-auto text-indigo-400" size={28} />
+                    <h3 className="mt-4 text-lg font-extrabold text-slate-900">No applications here yet</h3>
+                    <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+                      Open Tailor on a resume, add the job details and save it as an application.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    {visibleApplications.map((application) => (
+                      <ApplicationCard
+                        key={application.id}
+                        application={application}
+                        onOpen={() => openApplication(application)}
                       />
                     ))}
                   </div>
@@ -486,7 +673,7 @@ export default function Dashboard() {
                   Tailor “{tailorOpen.full_name}”
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Paste a job description and we will score the match.
+                  Add the role details, then save a tailored copy for this application.
                 </p>
               </div>
               <button
@@ -499,12 +686,39 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-4 px-6 py-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  value={applicationForm.company}
+                  onChange={(event) => setApplicationForm((current) => ({ ...current, company: event.target.value }))}
+                  placeholder="Company name"
+                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
+                />
+                <input
+                  value={applicationForm.role}
+                  onChange={(event) => setApplicationForm((current) => ({ ...current, role: event.target.value }))}
+                  placeholder="Target role"
+                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
+                />
+              </div>
+              <input
+                value={applicationForm.job_url}
+                onChange={(event) => setApplicationForm((current) => ({ ...current, job_url: event.target.value }))}
+                placeholder="Job posting URL (optional)"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
+              />
               <textarea
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value)}
                 rows={6}
                 placeholder="Paste the job description here…"
                 className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm leading-relaxed shadow-sm outline-none transition focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
+              />
+              <textarea
+                value={applicationForm.notes}
+                onChange={(event) => setApplicationForm((current) => ({ ...current, notes: event.target.value }))}
+                rows={2}
+                placeholder="Notes (optional)"
+                className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm leading-relaxed outline-none transition focus:border-amber-400 focus:ring-4 focus:ring-amber-100"
               />
 
               {tailorResult && (
@@ -576,11 +790,81 @@ export default function Dashboard() {
                 )}
                 {tailorLoading ? 'Analyzing…' : 'Analyze match'}
               </button>
+              <button
+                type="button"
+                onClick={handleSaveApplication}
+                disabled={applicationSaving}
+                className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-white transition hover:bg-slate-700 disabled:opacity-60"
+              >
+                {applicationSaving ? <Loader2 size={15} className="animate-spin" /> : <BriefcaseBusiness size={15} />}
+                {applicationSaving ? 'Saving…' : 'Save application'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {applicationOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+          <button type="button" aria-label="Close" onClick={() => setApplicationOpen(null)} className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
+          <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-indigo-600">Saved application</p>
+                <h2 className="mt-1 text-xl font-extrabold text-slate-900">{applicationOpen.role} · {applicationOpen.company}</h2>
+                <p className="mt-1 text-xs text-slate-500">Tailored resume saved with this application.</p>
+              </div>
+              <button type="button" onClick={() => setApplicationOpen(null)} className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50"><X size={17} /></button>
+            </div>
+            <div className="space-y-5 px-6 py-5">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="text-xs font-bold text-slate-500">Status
+                  <select value={applicationOpen.status} onChange={(event) => handleApplicationStatus(applicationOpen.id, event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-amber-400">
+                    <option value="wishlist">Wishlist</option><option value="applied">Applied</option><option value="interviewing">Interviewing</option><option value="offer">Offer</option><option value="rejected">Rejected</option><option value="withdrawn">Withdrawn</option>
+                  </select>
+                </label>
+                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Match score</p><p className="mt-1 text-2xl font-extrabold text-slate-900">{applicationOpen.match_score == null ? '—' : `${applicationOpen.match_score}%`}</p></div>
+                {applicationOpen.job_url ? <a href={applicationOpen.job_url} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"><ExternalLink size={15} /> Job posting</a> : <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No job URL added</div>}
+              </div>
+              {applicationOpen.analysis && <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Analysis</p><p className="mt-2 text-sm text-slate-700">{applicationOpen.analysis.strengths?.join(' · ') || 'Analysis complete.'}</p>{applicationOpen.analysis.recommendations?.length > 0 && <ul className="mt-3 space-y-1 text-sm text-slate-600">{applicationOpen.analysis.recommendations.map((item, index) => <li key={index}>• {item}</li>)}</ul>}</div>}
+              <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
+                <button type="button" onClick={() => handleDeleteApplication(applicationOpen.id)} className="rounded-full border border-red-200 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50">Delete application</button>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => handleAnalyzeApplication(applicationOpen.id)} disabled={applicationLoading} className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-700 disabled:opacity-60">{applicationLoading ? <Loader2 size={15} className="animate-spin" /> : <WandSparkles size={15} />} Analyze</button>
+                  <button type="button" onClick={() => { setApplicationOpen(null); openEditor(applicationOpen.tailored_resume); }} className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-700"><Pencil size={15} /> Edit saved resume</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function ApplicationCard({ application, onOpen }) {
+  const statusStyles = {
+    wishlist: 'bg-slate-100 text-slate-600',
+    applied: 'bg-blue-50 text-blue-700',
+    interviewing: 'bg-amber-50 text-amber-700',
+    offer: 'bg-emerald-50 text-emerald-700',
+    rejected: 'bg-red-50 text-red-600',
+    withdrawn: 'bg-slate-100 text-slate-500',
+  };
+  return (
+    <button type="button" onClick={onOpen} className="group text-left rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="truncate text-lg font-extrabold text-slate-900">{application.role}</p>
+          <p className="mt-1 truncate text-sm font-semibold text-slate-500">{application.company}</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold capitalize ${statusStyles[application.status] || statusStyles.wishlist}`}>{application.status}</span>
+      </div>
+      <div className="mt-5 flex items-center justify-between gap-3 text-xs text-slate-500">
+        <span>{application.match_score == null ? 'Not analyzed' : `${application.match_score}% match`}</span>
+        <span className="inline-flex items-center gap-1 font-bold text-indigo-600 group-hover:text-indigo-800">Open details <ArrowRight size={13} /></span>
+      </div>
+    </button>
   );
 }
 
