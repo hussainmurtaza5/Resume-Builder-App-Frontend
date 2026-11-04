@@ -76,6 +76,28 @@ export function exportResumeJson(resumeId, token) {
   return apiFetch(`/resumes/${resumeId}/export/json`, {}, token)
 }
 
+export async function exportResumeFile(resumeId, format, token) {
+  const normalizedFormat = format === 'docx' ? 'word' : format
+  const response = await fetch(`${API_BASE_URL}/resumes/${resumeId}/export/${normalizedFormat}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+
+  if (!response.ok) {
+    let detail = `Request failed (${response.status})`
+    try {
+      const data = await response.json()
+      detail = Array.isArray(data?.detail)
+        ? data.detail.map((error) => error.msg).join(', ')
+        : data?.detail || detail
+    } catch {
+      // The export endpoint may return a non-JSON error body.
+    }
+    throw new Error(detail)
+  }
+
+  return response.blob()
+}
+
 export function reorderResumeSection(resumeId, section, ids, token) {
   return apiFetch(`/resumes/${resumeId}/reorder`, {
     method: 'PATCH',

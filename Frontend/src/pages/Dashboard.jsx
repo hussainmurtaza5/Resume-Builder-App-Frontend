@@ -27,6 +27,7 @@ import {
   createApplication,
   deleteApplication,
   duplicateResume,
+  exportResumeFile,
   exportResumeJson,
   getApplication,
   getApplications,
@@ -41,6 +42,16 @@ import { TemplateGrid } from '../components/TemplatePicker';
 import { getResumePreferences } from '../lib/prefs';
 import { computeAtsScore } from '../lib/ats';
 import { getTemplate } from '../data/templates';
+
+function safeExternalUrl(value) {
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
+}
 
 export default function Dashboard() {
   const { token, logout } = useAuth();
@@ -219,6 +230,26 @@ export default function Dashboard() {
       link.href = url;
       link.download = `${(resume.full_name || 'resume').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.json`;
       link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      markBusy(resume.id, false);
+    }
+  };
+
+  const handleExportFile = async (resume, format) => {
+    markBusy(resume.id, true);
+    try {
+      const blob = await exportResumeFile(resume.id, format, token);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const extension = format === 'pdf' ? 'pdf' : 'docx';
+      link.href = url;
+      link.download = `${(resume.title || resume.full_name || 'resume').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
       URL.revokeObjectURL(url);
     } catch (err) {
       alert(err.message);
@@ -585,6 +616,8 @@ export default function Dashboard() {
                         onEdit={() => openEditor(resume)}
                         onDuplicate={() => handleDuplicate(resume)}
                         onExport={() => handleExport(resume)}
+                        onExportPdf={() => handleExportFile(resume, 'pdf')}
+                        onExportWord={() => handleExportFile(resume, 'word')}
                         onTailor={() => openTailor(resume)}
                         onDelete={() => handleDelete(resume.id)}
                       />
@@ -824,7 +857,7 @@ export default function Dashboard() {
                   </select>
                 </label>
                 <div className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Match score</p><p className="mt-1 text-2xl font-extrabold text-slate-900">{applicationOpen.match_score == null ? '—' : `${applicationOpen.match_score}%`}</p></div>
-                {applicationOpen.job_url ? <a href={applicationOpen.job_url} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"><ExternalLink size={15} /> Job posting</a> : <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No job URL added</div>}
+                {safeExternalUrl(applicationOpen.job_url) ? <a href={safeExternalUrl(applicationOpen.job_url)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"><ExternalLink size={15} /> Job posting</a> : <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">No job URL added</div>}
               </div>
               {applicationOpen.analysis && <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Analysis</p><p className="mt-2 text-sm text-slate-700">{applicationOpen.analysis.strengths?.join(' · ') || 'Analysis complete.'}</p>{applicationOpen.analysis.recommendations?.length > 0 && <ul className="mt-3 space-y-1 text-sm text-slate-600">{applicationOpen.analysis.recommendations.map((item, index) => <li key={index}>• {item}</li>)}</ul>}</div>}
               <div className="flex flex-wrap justify-between gap-2 border-t border-slate-100 pt-4">
@@ -868,7 +901,7 @@ function ApplicationCard({ application, onOpen }) {
   );
 }
 
-function ResumeCard({ resume, busy, deleting, onEdit, onDuplicate, onExport, onTailor, onDelete }) {
+function ResumeCard({ resume, busy, deleting, onEdit, onDuplicate, onExport, onExportPdf, onExportWord, onTailor, onDelete }) {
   const prefs = getResumePreferences(resume.id);
   const template = getTemplate(prefs.templateId);
   const { score, rating } = computeAtsScore(resume);
@@ -953,6 +986,22 @@ function ResumeCard({ resume, busy, deleting, onEdit, onDuplicate, onExport, onT
               className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
             >
               <Download size={13} /> Export JSON
+            </button>
+            <button
+              type="button"
+              onClick={onExportPdf}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full border border-red-200 px-3.5 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-60"
+            >
+              <Download size={13} /> PDF
+            </button>
+            <button
+              type="button"
+              onClick={onExportWord}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 px-3.5 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60"
+            >
+              <Download size={13} /> Word
             </button>
             <button
               type="button"
