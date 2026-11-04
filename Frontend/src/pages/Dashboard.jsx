@@ -474,7 +474,7 @@ export default function Dashboard() {
                 aria-hidden="true"
                 className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-amber-400/25 blur-3xl"
               />
-              <div className="relative z-[1] flex flex-wrap items-end justify-between gap-8">
+              <div className="relative z-1 flex flex-wrap items-end justify-between gap-8">
                 <div className="max-w-xl">
                   <span className="inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-amber-300/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-300">
                     <Sparkles size={13} /> Your workspace
