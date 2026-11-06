@@ -1,1 +1,8 @@
-{}
+{
+  "name": "resumbee",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix Frontend install && npm --prefix Frontend run build",
+    "deploy": "npm run build && wrangler deploy"
+  }
+}
