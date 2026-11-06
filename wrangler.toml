@@ -1,6 +1,8 @@
-name = "resumbee-frontend"
+name = "ai-resume-builder"
 compatibility_date = "2026-11-04"
-pages_build_output_dir = "./Frontend/dist"
+
+[build]
+command = "npm run build"
 
 [assets]
 directory = "./Frontend/dist"
