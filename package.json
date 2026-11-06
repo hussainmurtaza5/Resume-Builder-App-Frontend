@@ -1,8 +1,7 @@
 {
-  "name": "resumbee",
+  "name": "ai-resume-builder",
   "private": true,
   "scripts": {
-    "build": "npm --prefix Frontend install && npm --prefix Frontend run build",
-    "deploy": "npm run build && wrangler deploy"
+    "build": "npm --prefix Frontend install && npm --prefix Frontend run build"
   }
 }
