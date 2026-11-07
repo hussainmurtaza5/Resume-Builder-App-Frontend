@@ -1,5 +1,6 @@
 import { Check, LayoutTemplate, ShieldCheck, Sparkles, WandSparkles } from 'lucide-react';
 import Logo from './Logo';
+import { publicUrl } from '../lib/publicUrl';
 
 const highlights = [
   {
@@ -19,7 +20,12 @@ const highlights = [
   },
 ];
 
-const avatars = ['/images/avatar-1.jpg', '/images/avatar-2.jpg', '/images/avatar-3.jpg', '/images/avatar-4.jpg'];
+const avatars = [
+  publicUrl('/images/avatar-1.jpg'),
+  publicUrl('/images/avatar-2.jpg'),
+  publicUrl('/images/avatar-3.jpg'),
+  publicUrl('/images/avatar-4.jpg'),
+];
 
 export default function AuthShell({ children, eyebrow, title, highlight, subtitle }) {
   return (

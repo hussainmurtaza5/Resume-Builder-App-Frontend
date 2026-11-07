@@ -15,12 +15,13 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../Context/AuthContext';
 import { templates } from '../data/templates';
+import { publicUrl } from '../lib/publicUrl';
 
 const trustAvatars = [
-  { src: '/images/avatar-1.jpg', position: '50% 32%' },
-  { src: '/images/avatar-2.jpg', position: '50% 40%' },
-  { src: '/images/avatar-3.jpg', position: '50% 30%' },
-  { src: '/images/avatar-4.jpg', position: '50% 30%' },
+  { src: publicUrl('/images/avatar-1.jpg'), position: '50% 32%' },
+  { src: publicUrl('/images/avatar-2.jpg'), position: '50% 40%' },
+  { src: publicUrl('/images/avatar-3.jpg'), position: '50% 30%' },
+  { src: publicUrl('/images/avatar-4.jpg'), position: '50% 30%' },
 ];
 
 const features = [

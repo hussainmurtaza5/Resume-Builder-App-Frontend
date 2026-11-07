@@ -1,3 +1,5 @@
+import { publicUrl } from '../lib/publicUrl';
+
 // Single source of truth for every resume template used across the site.
 // `layout` maps to a renderer inside components/ResumePreview.jsx
 export const templates = [
@@ -9,7 +11,7 @@ export const templates = [
     role: 'Product Designer',
     accent: '#F4B41A',
     accentSoft: '#FEF6DA',
-    photo: '/images/sarah.jpg',
+    photo: publicUrl('/images/sarah.jpg'),
     layout: 'accented',
     fontId: 'inter',
     swatch:
@@ -23,7 +25,7 @@ export const templates = [
     role: 'Software Engineer',
     accent: '#1E2A4A',
     accentSoft: '#E3E8F4',
-    photo: '/images/avatar-4.jpg',
+    photo: publicUrl('/images/avatar-4.jpg'),
     layout: 'sidebar',
     fontId: 'source-sans',
     swatch:
@@ -37,7 +39,7 @@ export const templates = [
     role: 'Marketing Lead',
     accent: '#EC4899',
     accentSoft: '#FCE7F3',
-    photo: '/images/avatar-2.jpg',
+    photo: publicUrl('/images/avatar-2.jpg'),
     layout: 'centered',
     fontId: 'lora',
     swatch:
@@ -51,7 +53,7 @@ export const templates = [
     role: 'Data Analyst',
     accent: '#10B981',
     accentSoft: '#D1FAE5',
-    photo: '/images/avatar-3.jpg',
+    photo: publicUrl('/images/avatar-3.jpg'),
     layout: 'twocol',
     fontId: 'inter',
     swatch:
@@ -65,7 +67,7 @@ export const templates = [
     role: 'Research Analyst',
     accent: '#0F766E',
     accentSoft: '#CCFBF1',
-    photo: '/images/avatar-1.jpg',
+    photo: publicUrl('/images/avatar-1.jpg'),
     layout: 'classic',
     fontId: 'merriweather',
     swatch:
@@ -79,7 +81,7 @@ export const templates = [
     role: 'Product Manager',
     accent: '#7C3AED',
     accentSoft: '#EDE9FE',
-    photo: '/images/avatar-2.jpg',
+    photo: publicUrl('/images/avatar-2.jpg'),
     layout: 'sidebar',
     fontId: 'montserrat',
     swatch:
