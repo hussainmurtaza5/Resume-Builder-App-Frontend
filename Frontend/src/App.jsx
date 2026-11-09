@@ -47,7 +47,7 @@ function AuthStatus({ message, onRetry }) {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Routes>
           {/* Public Routes (Login/Register) */}
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
