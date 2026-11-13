@@ -6,8 +6,10 @@ From `Frontend/`, install dependencies with `npm install`, then start the app wi
 `npm run dev`. The Vite development server proxies `/api` requests to
 `http://127.0.0.1:8000` by default.
 
-Set `VITE_API_URL` to the backend base URL when it is hosted elsewhere. The same
-base URL is used for authentication, resume requests, and AI summary generation.
+Set `VITE_API_URL` to the backend base URL when it is hosted elsewhere. The
+production build defaults to the deployed backend
+(`https://resume-builder-app-orpin-mu.vercel.app`), while local development
+continues to proxy `/api` to `http://127.0.0.1:8000`.
 
 ## Deploy to GitHub Pages
 
@@ -16,12 +18,9 @@ In the repository settings, set **Pages → Build and deployment → Source** to
 **GitHub Actions**. The project is published at
 `https://hussainmurtaza5.github.io/Resume-Builder-App-Frontend/`.
 
-To enable authentication, resume management, and AI features, add a repository
-Actions variable named `VITE_API_URL` containing the publicly reachable backend
-base URL (for example, `https://api.example.com`). The backend must allow requests
-from the GitHub Pages origin. GitHub Pages only hosts static files and cannot
-run the backend; without this variable, the frontend uses its default `/api`
-URL, which is not served by Pages.
+To override the backend URL, add a repository Actions variable named
+`VITE_API_URL`. The backend must allow requests from the GitHub Pages origin.
+GitHub Pages only hosts static files and cannot run the backend.
 
 ## AI summary integration
 

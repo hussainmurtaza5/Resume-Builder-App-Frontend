@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_PAGES: 'true'
-      VITE_API_URL: ${{ vars.VITE_API_URL }}
+      VITE_API_URL: ${{ vars.VITE_API_URL || 'https://resume-builder-app-orpin-mu.vercel.app' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

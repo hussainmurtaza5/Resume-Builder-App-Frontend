@@ -1,4 +1,9 @@
-const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+// GitHub Pages is static, so production requests must go directly to the
+// deployed FastAPI service. VITE_API_URL can still override this per environment.
+const DEFAULT_API_URL = import.meta.env.PROD
+  ? 'https://resume-builder-app-orpin-mu.vercel.app'
+  : '/api'
+const API_BASE_URL = (import.meta.env.VITE_API_URL || DEFAULT_API_URL).replace(/\/$/, '')
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
